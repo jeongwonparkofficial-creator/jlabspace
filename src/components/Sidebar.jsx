@@ -8,7 +8,7 @@ export default function Sidebar() {
     const menuItems = [
         { name: "오피스톡", path: "/main/office-talk", icon: "💬" },
         { name: "기록", path: "/main/records", icon: "📝" },
-        { name: "적립", path: "/main/point", icon: "💰" },
+        { name: "적립", path: "/pos", icon: "💰" },
         { name: "게시판", path: "/main/board", icon: "📋" },
         { name: "멀티디바이스 모드", path: "/main/multi-device", icon: "🖥️" },
         { name: "마이데스크", path: "/main/mydesk", icon: "👤" },

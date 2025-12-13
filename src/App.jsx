@@ -43,9 +43,19 @@ export default function App() {
             <Route path="mydesk" element={<MyDesk />} />
             <Route path="board" element={<Board />} />
             <Route path="docs" element={<Board />} /> {/* Redirect/Map Docs to Board */}
-            <Route path="point" element={<PointSystem />} />
+            <Route path="docs" element={<Board />} /> {/* Redirect/Map Docs to Board */}
             <Route path="mode" element={<Mode />} />
           </Route>
+
+          {/* Independent POS Route (Full Screen) */}
+          <Route
+            path="/pos"
+            element={
+              <ProtectedRoute>
+                <PointSystem />
+              </ProtectedRoute>
+            }
+          />
         </Routes>
       </Router>
     </AuthProvider>
