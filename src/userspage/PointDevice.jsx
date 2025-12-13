@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { getDatabase, ref, onValue, update } from "firebase/database";
+import { getDatabase, ref, onValue, update, get } from "firebase/database";
 import { useAuth } from "../context/AuthContext";
 import { useSearchParams } from "react-router-dom";
 
@@ -10,8 +10,9 @@ export default function PointDevice() {
 
     // Auth Logic
     const [targetUid, setTargetUid] = useState(searchParams.get("uid") || user?.uid || "");
-    const [inputUid, setInputUid] = useState("");
+    const [inputCode, setInputCode] = useState("");
     const [isConnected, setIsConnected] = useState(false);
+    const [loading, setLoading] = useState(false);
 
     // Data State
     const [view, setView] = useState("IDLE");
@@ -29,6 +30,14 @@ export default function PointDevice() {
 
     // Keypad Input
     const [phoneInput, setPhoneInput] = useState("");
+
+    useEffect(() => {
+        // If query param 'code' is present, try to resolve it immediately
+        const code = searchParams.get("code");
+        if (code) {
+            handleConnectWithCode(code);
+        }
+    }, [searchParams]);
 
     useEffect(() => {
         if (!targetUid) return;
@@ -52,19 +61,37 @@ export default function PointDevice() {
                     errorMsg: session.errorMsg || ""
                 });
             } else {
-                // If session is null, it might be that manager hasn't opened page yet or cleared it.
-                // But we should consider it connected if we are listening? 
-                // No, if session data is null, wait.
-                // But avoid white screen.
                 setIsConnected(true);
-                setView("IDLE"); // Default to IDLE if no data
+                setView("IDLE");
             }
         });
         return () => unsubscribe();
     }, [targetUid]);
 
+    const handleConnectWithCode = async (code) => {
+        setLoading(true);
+        try {
+            const snap = await get(ref(db, `pos_codes/${code}`));
+            if (snap.exists()) {
+                const uid = snap.val().uid;
+                setTargetUid(uid);
+            } else {
+                alert("유효하지 않은 코드입니다.");
+            }
+        } catch (e) {
+            console.error(e);
+            alert("연결 오류");
+        } finally {
+            setLoading(false);
+        }
+    }
+
     const handleConnect = () => {
-        if (inputUid.trim().length > 0) setTargetUid(inputUid.trim());
+        if (inputCode.length === 5) {
+            handleConnectWithCode(inputCode);
+        } else {
+            alert("5자리 코드를 입력해주세요");
+        }
     }
 
     const handleKeypad = (num) => {
@@ -93,28 +120,19 @@ export default function PointDevice() {
     const maskName = (name) => {
         if (!name) return "";
         if (name.length <= 2) return name[0] + "*";
-        return name[0] + "*".repeat(name.length - 2) + name[name.length - 1]; // Or just Kim** as requested? Request: "김** 님 처럼 되고 2글자 인 경우 성만" -> "Kim**" 
-        // User example: "김** 님 처럼 되고 2글자 인 경우 성만 보이게"
-        // 3 chars "홍길동" -> "홍**" ? Or "홍*동"? 
-        // Let's go with "Name"[0] + "**"
-        return name[0] + "**";
+        return name[0] + "*".repeat(name.length - 1);
     }
 
     const maskPhone = (phone) => {
-        // Request: "010-**00-000*"
         if (!phone) return "";
-        // Assuming 01012345678 or 010-1234-5678 format
         const clean = phone.replace(/-/g, "");
         if (clean.length < 10) return phone;
-        // 010 - XXXX - XXXX
-        // User want: 010-**00-000*
-        // It's a bit specific: 3rd,4th of 2nd block masked? 
-        // Let's standard mask: 010-**XX-XX** ? 
-        // User example: 010-**00-000* -> indices 4,5 masked? 
-        // Let's just do: 010-****-**** for safety or following the visual instructions?
-        // User said: "010-**00-000*" -> seems specific masking.
-        // Let's try to match: 010-1234-5678 -> 010-**34-567*
+        // 010-**XX-XX**
         return `${clean.slice(0, 3)}-**${clean.slice(5, 7)}-${clean.slice(7, 10)}*`;
+    }
+
+    const getTotalDiscount = () => {
+        return data.cart.reduce((sum, item) => sum + (item.discount || 0), 0);
     }
 
     // --- RENDERERS ---
@@ -132,20 +150,25 @@ export default function PointDevice() {
     );
 
     const renderConnect = () => (
-        <div className="flex flex-col h-full bg-gray-900 items-center justify-center p-6 text-white">
-            <h1 className="text-2xl font-bold mb-6 text-indigo-400">POS 연결 설정</h1>
-            <div className="bg-white/10 p-6 rounded-2xl shadow-lg w-full max-w-sm border border-white/20 backdrop-blur-md">
-                <label className="text-xs font-bold text-gray-400 block mb-2">UID 입력</label>
-                <div className="flex gap-2">
+        <div className="flex flex-col h-full bg-[#1a1a1a] items-center justify-center p-6 text-white font-sans">
+            <h1 className="text-3xl font-bold mb-8 text-white">Device Connect</h1>
+            <div className="bg-white/5 p-8 rounded-3xl w-full max-w-sm border border-white/10 backdrop-blur-md">
+                <label className="text-xs font-bold text-gray-400 block mb-3 pl-1">연결 코드 (5자리)</label>
+                <div className="flex flex-col gap-3">
                     <input
                         type="text"
-                        value={inputUid}
-                        onChange={(e) => setInputUid(e.target.value)}
-                        placeholder="UID"
-                        className="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-4 py-3 outline-none text-white"
+                        maxLength={5}
+                        value={inputCode}
+                        onChange={(e) => setInputCode(e.target.value)}
+                        placeholder="12345"
+                        className="bg-gray-800/50 border border-gray-700 rounded-2xl px-6 py-4 text-center text-3xl tracking-widest outline-none text-white focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all placeholder-gray-600"
                     />
-                    <button onClick={handleConnect} className="bg-indigo-600 text-white px-5 rounded-lg font-bold">
-                        연결
+                    <button
+                        onClick={handleConnect}
+                        disabled={loading}
+                        className="bg-blue-600 text-white py-4 rounded-2xl font-bold text-lg hover:bg-blue-500 transition-colors disabled:opacity-50 mt-2 shadow-lg shadow-blue-900/20"
+                    >
+                        {loading ? "연결 중..." : "연결하기"}
                     </button>
                 </div>
             </div>
@@ -153,61 +176,57 @@ export default function PointDevice() {
     );
 
     const renderIdle = () => (
-        <div className="flex flex-col h-full bg-[#1a1a1a] items-center justify-center p-10 relative text-white">
+        <div className="flex flex-col h-full bg-[#1a1a1a] items-center justify-center p-10 relative text-white font-sans">
             {renderHeader()}
 
-            {/* Dark Theme aesthetics as per image */}
-            <div className="w-full max-w-md aspect-video bg-gray-800/50 rounded-3xl flex items-center justify-center border border-gray-700/50 mb-8">
-                {/* Placeholder for Ads or Logo */}
+            <div className="w-full max-w-lg aspect-video bg-gray-800/30 rounded-[2rem] flex items-center justify-center border border-gray-700/30 mb-12 shadow-2xl">
                 <div className="text-center">
-                    <div className="text-4xl mb-4">👋</div>
-                    <div className="text-2xl font-bold">환영합니다</div>
-                    <div className="text-gray-400">{data.storeName}</div>
+                    <div className="text-6xl mb-6">👋</div>
+                    <div className="text-3xl font-bold text-white mb-2">환영합니다</div>
+                    <div className="text-xl text-gray-400 font-medium">{data.storeName}</div>
                 </div>
             </div>
 
             <div className="flex gap-4">
-                <div className="text-center">
-                    <div className="w-32 h-32 bg-gray-800 rounded-2xl flex items-center justify-center border-2 border-dashed border-gray-600 hover:border-indigo-500 cursor-pointer transition-colors"
-                        onClick={() => setView("PHONE_INPUT")} /* Self-trigger input if needed? usually manager triggers */
-                    >
-                        <span className="text-4xl text-gray-500">+</span>
+                <div className="text-center group cursor-pointer" onClick={() => setView("PHONE_INPUT")}>
+                    <div className="w-24 h-24 bg-gray-800/50 rounded-full flex items-center justify-center border border-gray-700 group-hover:border-blue-500 group-hover:bg-blue-500/10 transition-all mb-3 text-gray-400 group-hover:text-blue-500">
+                        <span className="text-4xl font-light">+</span>
                     </div>
-                    <div className="mt-2 font-bold text-gray-400">Add customer</div>
+                    <div className="text-sm font-bold text-gray-500 group-hover:text-blue-400 transition-colors">고객 추가</div>
                 </div>
             </div>
         </div>
     );
 
     const renderPhoneInput = () => (
-        <div className="flex flex-col h-full bg-[#1a1a1a] text-white">
+        <div className="flex flex-col h-full bg-[#1a1a1a] text-white font-sans">
             {renderHeader()}
-            <div className="p-8 pb-4 flex flex-col items-center">
-                <div className="text-sm font-bold text-gray-400 mb-1">{data.storeName}</div>
-                <h2 className="text-3xl font-bold mb-6 text-indigo-400">
+            <div className="p-10 pb-6 flex flex-col items-center flex-1 justify-center">
+                <div className="text-sm font-bold text-gray-500 mb-2">{data.storeName}</div>
+                <h2 className="text-5xl font-bold mb-8 text-white tracking-tight">
                     {data.total?.toLocaleString()}원
                 </h2>
-                <p className="text-gray-300 font-medium mb-6">적립/사용할 번호를 입력해주세요</p>
+                <p className="text-gray-400 font-medium mb-8 text-lg">전화번호 뒷자리를 입력해주세요</p>
 
-                <div className="text-center mb-6 w-full max-w-xs">
-                    <div className="text-white text-4xl font-mono font-bold tracking-widest h-16 border-b-2 border-indigo-500 flex items-center justify-center bg-transparent rounded-t-xl">
-                        {phoneInput || <span className="text-gray-600 text-3xl">010-0000-0000</span>}
+                <div className="text-center mb-8 w-full max-w-sm">
+                    <div className="text-white text-5xl font-mono font-bold tracking-[0.2em] h-20 border-b-2 border-blue-500 flex items-center justify-center bg-transparent">
+                        {phoneInput || <span className="text-gray-700 text-4xl tracking-normal opacity-50">010-0000-0000</span>}
                     </div>
                 </div>
             </div>
 
-            <div className="flex-1 bg-gray-900 grid grid-cols-3 gap-0.5 p-0.5 border-t border-gray-800">
+            <div className="bg-[#121212] grid grid-cols-3 gap-[1px] p-[1px] border-t border-gray-800">
                 {[1, 2, 3, 4, 5, 6, 7, 8, 9].map((num) => (
-                    <button key={num} onClick={() => handleKeypad(num)} className="bg-[#1a1a1a] text-3xl font-medium text-white active:bg-gray-800 transition-colors py-4">
+                    <button key={num} onClick={() => handleKeypad(num)} className="bg-[#1a1a1a] h-24 text-3xl font-medium text-white active:bg-gray-800 transition-colors">
                         {num}
                     </button>
                 ))}
-                <button onClick={handleClear} className="bg-[#1a1a1a] text-2xl text-red-500 font-bold active:bg-gray-800">C</button>
-                <button onClick={() => handleKeypad(0)} className="bg-[#1a1a1a] text-3xl font-medium text-white active:bg-gray-800">0</button>
-                <button onClick={handleBackspace} className="bg-[#1a1a1a] text-2xl text-gray-500 font-bold active:bg-gray-800">←</button>
+                <button onClick={handleClear} className="bg-[#1a1a1a] h-24 text-xl text-red-500 font-bold active:bg-gray-800">초기화</button>
+                <button onClick={() => handleKeypad(0)} className="bg-[#1a1a1a] h-24 text-3xl font-medium text-white active:bg-gray-800">0</button>
+                <button onClick={handleBackspace} className="bg-[#1a1a1a] h-24 text-2xl text-gray-400 font-bold active:bg-gray-800">←</button>
             </div>
-            <div className="p-4 bg-gray-900">
-                <button onClick={submitPhone} className="w-full bg-indigo-600 text-white py-5 rounded-2xl text-xl font-bold shadow-lg hover:bg-indigo-500 transition-colors">
+            <div className="p-6 bg-[#121212]">
+                <button onClick={submitPhone} className="w-full bg-blue-600 text-white py-5 rounded-2xl text-xl font-bold shadow-lg shadow-blue-900/30 hover:bg-blue-500 transition-all active:scale-95">
                     입력 완료
                 </button>
             </div>
@@ -215,26 +234,26 @@ export default function PointDevice() {
     );
 
     const renderCart = () => (
-        <div className="flex flex-col h-full bg-[#121212] text-white">
+        <div className="flex flex-col h-full bg-[#121212] text-white font-sans">
             {renderHeader()}
 
-            {/* Header: Item / Qty / Sales Rep / Total */}
-            <div className="bg-black/50 p-4 grid grid-cols-12 gap-2 text-xs font-bold text-gray-400 uppercase tracking-wider">
-                <div className="col-span-6">ITEM</div>
-                <div className="col-span-2 text-center">QTY</div>
-                <div className="col-span-4 text-right">TOTAL</div>
+            {/* Header: Item / Qty / Total */}
+            <div className="bg-[#1a1a1a] px-6 py-4 grid grid-cols-12 gap-4 text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800">
+                <div className="col-span-6">상품</div>
+                <div className="col-span-2 text-center">수량</div>
+                <div className="col-span-4 text-right">금액</div>
             </div>
 
             {/* List */}
-            <div className="flex-1 overflow-y-auto">
+            <div className="flex-1 overflow-y-auto p-2">
                 {data.cart.map((item, i) => (
-                    <div key={i} className={`p-4 grid grid-cols-12 gap-2 border-b border-gray-800 ${i === 0 ? 'bg-blue-900/20 border-l-4 border-l-blue-500' : ''}`}>
+                    <div key={i} className={`p-4 grid grid-cols-12 gap-4 border-b border-gray-800/50 items-center ${i === 0 ? 'bg-blue-500/5 rounded-xl border border-blue-500/20' : ''}`}>
                         <div className="col-span-6 flex flex-col">
-                            <span className="font-bold text-lg">{item.name}</span>
-                            {item.remark && <span className="text-xs text-blue-400">{item.remark}</span>}
+                            <span className="font-bold text-lg text-gray-100">{item.name}</span>
+                            {item.remark && <span className="text-xs text-blue-400 mt-1 font-medium">{item.remark}</span>}
                         </div>
-                        <div className="col-span-2 text-center text-lg">{item.qty}</div>
-                        <div className="col-span-4 text-right text-lg font-mono">
+                        <div className="col-span-2 text-center text-lg font-medium text-gray-300">{item.qty}</div>
+                        <div className="col-span-4 text-right text-lg font-bold text-white">
                             {((item.price * item.qty) - (item.discount || 0)).toLocaleString()}
                         </div>
                     </div>
@@ -242,43 +261,47 @@ export default function PointDevice() {
             </div>
 
             {/* Bottom Footer Area */}
-            <div className="bg-[#1a1a1a] p-6 grid grid-cols-2 gap-8 border-t border-gray-800">
+            <div className="bg-[#1a1a1a] p-6 grid grid-cols-2 gap-6 border-t border-gray-800 pb-10">
                 {/* Left: Customer Info or Add Customer Placeholder */}
-                <div className="flex items-center justify-center bg-gray-800/50 rounded-2xl border border-gray-700/50">
+                <div className="flex items-center justify-center bg-gray-800/30 rounded-3xl border border-gray-700/50">
                     {data.member ? (
-                        <div className="text-center p-4">
-                            {/* "Store Name (Bold) Name (Normal)" */}
-                            <div className="text-gray-400 text-sm mb-1">
-                                <span className="font-bold text-white text-lg mr-2">{data.storeName}</span>
+                        <div className="text-center p-6 w-full">
+                            <div className="text-gray-400 text-sm mb-2 flex items-center justify-center gap-2">
+                                <span className="font-bold text-white text-lg">{data.storeName}</span>
+                                <span className="w-1 h-1 bg-gray-500 rounded-full"></span>
                                 <span className="text-white text-lg">{maskName(data.member.name)} 님</span>
                             </div>
-                            <div className="text-2xl font-mono text-indigo-400 font-bold tracking-widest">
+                            <div className="text-3xl font-mono text-blue-400 font-bold tracking-widest">
                                 {maskPhone(data.member.phone)}
                             </div>
                         </div>
                     ) : (
-                        <div className="flex flex-col items-center justify-center h-32 w-full text-gray-500">
-                            <span className="text-4xl mb-2">+</span>
-                            <span>Add customer</span>
+                        <div className="flex flex-col items-center justify-center h-32 w-full text-gray-600 gap-2">
+                            <div className="w-12 h-12 rounded-full border-2 border-dashed border-gray-600 flex items-center justify-center">
+                                <span className="text-2xl pt-1">+</span>
+                            </div>
+                            <span className="text-sm font-bold">고객 추가</span>
                         </div>
                     )}
                 </div>
 
                 {/* Right: Totals */}
-                <div className="flex flex-col justify-end space-y-2">
-                    <div className="flex justify-between text-gray-400 text-sm">
-                        <span>LINES</span>
-                        <span>{data.cart.length}</span>
+                <div className="flex flex-col justify-end space-y-3 px-2">
+                    <div className="flex justify-between text-gray-500 text-sm font-medium">
+                        <span>주문 상품 수</span>
+                        <span>{data.cart.length}개</span>
                     </div>
-                    {/* Removed VAT display as requested */}
-                    <div className="flex justify-between text-gray-400 text-sm border-b border-gray-700 pb-2 mb-2">
-                        <span>DISCOUNTS</span>
-                        <span>$0.00</span> {/* Calculate only if passed? data.cart logic */}
-                    </div>
+                    {/* Discount Visualization */}
+                    {getTotalDiscount() > 0 && (
+                        <div className="flex justify-between text-red-400 text-sm font-bold">
+                            <span>총 할인 금액</span>
+                            <span>-{getTotalDiscount().toLocaleString()}원</span>
+                        </div>
+                    )}
 
-                    <div className="flex justify-between items-end mt-2">
-                        <span className="text-gray-400 text-sm mb-1">AMOUNT DUE</span>
-                        <span className="text-5xl font-light text-blue-500">
+                    <div className="flex justify-between items-end pt-4 border-t border-gray-800 mt-2">
+                        <span className="text-gray-400 font-bold mb-1">결제하실 금액</span>
+                        <span className="text-4xl font-extrabold text-blue-500">
                             {data.total.toLocaleString()}원
                         </span>
                     </div>
@@ -288,35 +311,35 @@ export default function PointDevice() {
     );
 
     const renderProcessing = () => (
-        <div className="h-full bg-[#1a1a1a] flex flex-col items-center justify-center p-10 text-white">
+        <div className="h-full bg-[#1a1a1a] flex flex-col items-center justify-center p-10 text-white font-sans">
             {renderHeader()}
-            <div className="animate-spin rounded-full h-16 w-16 border-4 border-gray-700 border-t-indigo-500 mb-6"></div>
-            <h2 className="text-2xl font-bold">결제 처리 중입니다</h2>
-            <p className="text-gray-400 mt-2">잠시만 기다려주세요</p>
+            <div className="animate-spin rounded-full h-20 w-20 border-4 border-gray-700 border-t-blue-500 mb-8"></div>
+            <h2 className="text-3xl font-bold mb-3">결제 처리 중입니다</h2>
+            <p className="text-gray-400 text-lg">잠시만 기다려주세요</p>
         </div>
     );
 
     const renderError = () => (
-        <div className="h-full bg-[#1a1a1a] flex flex-col items-center justify-center p-10 text-white">
+        <div className="h-full bg-[#1a1a1a] flex flex-col items-center justify-center p-10 text-white font-sans">
             {renderHeader()}
-            <div className="text-6xl mb-6">⚠️</div>
-            <h2 className="text-2xl font-bold mb-2">결제 실패</h2>
-            <p className="text-red-400 font-bold text-center">{data.errorMsg}</p>
+            <div className="text-7xl mb-8">⚠️</div>
+            <h2 className="text-3xl font-bold mb-4">결제 실패</h2>
+            <p className="text-red-400 font-bold text-xl text-center max-w-md leading-relaxed">{data.errorMsg}</p>
         </div>
     );
 
     const renderSuccess = () => (
-        <div className="h-full bg-blue-600 flex flex-col items-center justify-center text-white p-10 relative">
+        <div className="h-full bg-blue-600 flex flex-col items-center justify-center text-white p-10 relative font-sans">
             {renderHeader()}
-            <div className="bg-white/20 p-8 rounded-full mb-6 backdrop-blur-sm animate-scale-in">
-                <div className="text-6xl">✅</div>
+            <div className="bg-white/20 p-10 rounded-full mb-8 backdrop-blur-sm animate-scale-in shadow-2xl">
+                <div className="text-7xl">✅</div>
             </div>
-            <h2 className="text-4xl font-bold mb-4">결제 성공!</h2>
-            <p className="opacity-80 mb-8 text-xl">{data.lastResult?.msg || "감사합니다"}</p>
+            <h2 className="text-5xl font-bold mb-6">결제 성공!</h2>
+            <p className="opacity-90 mb-12 text-2xl font-medium">{data.lastResult?.msg || "이용해주셔서 감사합니다"}</p>
             {data.lastResult?.balance !== undefined && (
-                <div className="bg-black/20 px-8 py-4 rounded-2xl backdrop-blur-sm">
-                    <span className="opacity-70 text-sm mr-2 block text-center mb-1">남은 포인트</span>
-                    <span className="font-bold text-3xl">{data.lastResult.balance.toLocaleString()} P</span>
+                <div className="bg-black/20 px-10 py-6 rounded-3xl backdrop-blur-md border border-white/10">
+                    <span className="opacity-80 text-sm mr-2 block text-center mb-2 font-bold tracking-widest uppercase">남은 포인트</span>
+                    <span className="font-bold text-4xl">{data.lastResult.balance.toLocaleString()} P</span>
                 </div>
             )}
         </div>
@@ -329,7 +352,7 @@ export default function PointDevice() {
             {view === "IDLE" && renderIdle()}
             {view === "PHONE_INPUT" && renderPhoneInput()}
             {view === "CART" && renderCart()}
-            {view === "MEMBER_CONFIRM" && renderCart()} {/* Fallback to Cart with Member */}
+            {view === "MEMBER_CONFIRM" && renderCart()}
             {(view === "PROCESSING" || view === "SIGNATURE") && renderProcessing()}
             {view === "SUCCESS" && renderSuccess()}
             {view === "ERROR" && renderError()}
