@@ -201,10 +201,14 @@ export default function PointSystem() {
             const data = snapshot.val();
             let foundUser = null;
             if (data) {
-                // Exact match or last 4 digits
+                // Exact match or last 4 digits (robust check)
                 const uid = Object.keys(data).find(key => {
                     const p = data[key].phone;
-                    return p === phone || p.endsWith(phone);
+                    if (!p) return false;
+                    // Normalize: remove dashes
+                    const cleanP = p.replace(/-/g, "").trim();
+                    const cleanSearch = phone.replace(/-/g, "").trim();
+                    return cleanP === cleanSearch || (cleanSearch.length >= 4 && cleanP.endsWith(cleanSearch));
                 });
                 if (uid) {
                     foundUser = { uid, ...data[uid] };
@@ -452,7 +456,7 @@ export default function PointSystem() {
             {/* HEADER - Toss Style (Dark Gray) */}
             <div className="bg-[#333D4B] text-white p-3 flex justify-between items-center shadow-md z-10 px-6">
                 <div className="flex items-center gap-4">
-                    <button onClick={() => navigate("/main")} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300 hover:text-white">
+                    <button onClick={() => navigate("/")} className="p-2 hover:bg-white/10 rounded-full transition-colors text-gray-300 hover:text-white">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-6 h-6">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M10.5 19.5L3 12m0 0l7.5-7.5M3 12h18" />
                         </svg>

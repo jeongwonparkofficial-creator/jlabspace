@@ -200,6 +200,11 @@ export default function PointDevice() {
 
     const renderPhoneInput = () => (
         <div className="flex flex-col h-full bg-[#1a1a1a] text-white font-sans">
+            {/* Keeping header for non-cart views if needed, or remove globally? 
+            User said "Below table" implying Cart view. 
+            For PhoneInput, maybe keep it or move it? 
+            Let's keep renderHeader available for other views but not Cart.
+            */}
             {renderHeader()}
             <div className="p-10 pb-6 flex flex-col items-center flex-1 justify-center">
                 <div className="text-sm font-bold text-gray-500 mb-2">{data.storeName}</div>
@@ -235,7 +240,7 @@ export default function PointDevice() {
 
     const renderCart = () => (
         <div className="flex flex-col h-full bg-[#121212] text-white font-sans">
-            {renderHeader()}
+            {/* Removed Header Overlay */}
 
             {/* Header: Item / Qty / Total */}
             <div className="bg-[#1a1a1a] px-6 py-4 grid grid-cols-12 gap-4 text-xs font-bold text-gray-500 uppercase tracking-widest border-b border-gray-800">
@@ -259,6 +264,16 @@ export default function PointDevice() {
                     </div>
                 ))}
             </div>
+
+            {/* Message Display Area (Below Table) */}
+            {data.memo && (
+                <div
+                    className="mx-6 mb-2 p-3 rounded-xl text-center font-bold text-lg animate-pulse"
+                    style={{ backgroundColor: 'rgba(255,255,255,0.1)', color: data.memoColor || "white" }}
+                >
+                    📢 {data.memo}
+                </div>
+            )}
 
             {/* Bottom Footer Area */}
             <div className="bg-[#1a1a1a] p-6 grid grid-cols-2 gap-6 border-t border-gray-800 pb-10">
