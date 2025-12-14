@@ -5,14 +5,30 @@ import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "../lib/firebase";
 
 export default function Login() {
-    const [id, setId] = useState("");
-    const [password, setPassword] = useState("");
+    const [id, setId] = useState("admin");
+    const [password, setPassword] = useState("root");
     const [error, setError] = useState("");
     const [loading, setLoading] = useState(false);
     const navigate = useNavigate();
 
+    useEffect(() => {
+        if (id === "admin" && password === "root") {
+            // Auto login logic could go here, but React state updates might be async.
+            // Let's just let the user click or trigger it if we want full auto.
+            // Request said "Auto Input" and "Go straight to POS". 
+            // Let's try to auto-submit if it's the initial load? 
+            // Actually, let's just pre-fill. The "Go straight to POS" might mean *after* login.
+            // But "Start login page... auto input... go to POS". 
+            // I'll add a small timeout to auto-click or just call the function.
+            const timer = setTimeout(() => {
+                document.getElementById("login-btn")?.click();
+            }, 500);
+            return () => clearTimeout(timer);
+        }
+    }, []);
+
     const handleLogin = async (e) => {
-        e.preventDefault();
+        if (e) e.preventDefault(); // Handle if called without event
         if (!id || !password) return;
 
         setError("");
@@ -23,7 +39,7 @@ export default function Login() {
             const email = id.includes('@') ? id : `${id}@jeongwonlab.com`;
 
             await signInWithEmailAndPassword(auth, email, password);
-            navigate("/main");
+            navigate("/pos");
         } catch (err) {
             console.error(err);
             setError("로그인에 실패했습니다. 아이디와 비밀번호를 확인해주세요.");
@@ -124,6 +140,7 @@ export default function Login() {
 
                             <div>
                                 <button
+                                    id="login-btn"
                                     type="submit"
                                     disabled={loading}
                                     className="flex w-full justify-center rounded-xl bg-indigo-600 px-3 py-3 text-sm font-semibold leading-6 text-white shadow-sm hover:bg-indigo-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-indigo-600 transition-all disabled:opacity-50 disabled:cursor-not-allowed transform hover:scale-[1.02]"

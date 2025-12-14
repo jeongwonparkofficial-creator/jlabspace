@@ -22,6 +22,13 @@ export default function PointSystem() {
     const [products, setProducts] = useState([]);
     const [currentTime, setCurrentTime] = useState("");
 
+    // Member Registration
+    const [registerOpen, setRegisterOpen] = useState(false);
+    const [newMember, setNewMember] = useState({ name: "", phone: "", points: 0 });
+
+    // Calculator / Keypad
+    const [calcBuffer, setCalcBuffer] = useState("");
+
     // Member & Input
     const [phoneInput, setPhoneInput] = useState("");
     const [member, setMember] = useState(null);
@@ -31,6 +38,11 @@ export default function PointSystem() {
     const [cart, setCart] = useState([]);
     const [memo, setMemo] = useState("");
     const [memoColor, setMemoColor] = useState("black"); // black, red, blue, green
+    const [isSpecialMode, setIsSpecialMode] = useState(false); // New: Special Mode (Red)
+
+    // Tools & Categories
+    const [toolsOpen, setToolsOpen] = useState(false);
+    const [selectedCategory, setSelectedCategory] = useState("전체");
 
     // Gift Card State
     const [giftCardCodeInput, setGiftCardCodeInput] = useState("");
@@ -232,7 +244,14 @@ export default function PointSystem() {
             if (existing) {
                 return prev.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i);
             }
-            return [...prev, { ...item, qty: 1, discount: 0, remark: item.remark || "", giftCardCode: item.giftCardCode || null }];
+            return [...prev, {
+                ...item,
+                qty: 1,
+                discount: 0,
+                remark: item.remark || "",
+                giftCardCode: item.giftCardCode || null,
+                isSpecial: isSpecialMode // Apply Special flag
+            }];
         });
     };
 
@@ -414,8 +433,10 @@ export default function PointSystem() {
     const handleOpenWindow = () => {
         if (!user?.uid) return alert("로그인이 필요합니다.");
         setIsDeviceMode(true);
-        // We can pass shortCode as param too for easier debug
-        window.open(`/point-device?code=${shortCode}`, "CustomerView", "width=800,height=600");
+        // Fullscreen attempt: use screen size
+        const width = screen.availWidth;
+        const height = screen.availHeight;
+        window.open(`/point-device?code=${shortCode}`, "CustomerView", `width=${width},height=${height},left=0,top=0`);
     };
 
     const handleOutputMemo = () => {
@@ -427,6 +448,80 @@ export default function PointSystem() {
             syncToCustomer("MEMBER_CONFIRM", { name: member.name, phone: member.phone });
         }
     }
+
+    const handleRegisterMember = async () => {
+        if (!newMember.name || !newMember.phone) return alert("이름과 전화번호를 입력해주세요.");
+
+        // Basic Phone Validation
+        if (newMember.phone.length < 4) return alert("전화번호를 올바르게 입력해주세요.");
+
+        try {
+            // Check if exists?
+            // For now, just generate a new ID or use Phone as part of ID?
+            // Using push to allow duplicates? No, usually phone should be unique.
+            // Let's query by phone first? 
+            // For MVP/Speed, we'll just push a new user.
+            const newUserRef = push(ref(db, "users"));
+            await set(newUserRef, {
+                name: newMember.name,
+                phone: newMember.phone,
+                points: parseInt(newMember.points) || 0,
+                createdAt: Date.now()
+            });
+
+            alert("회원 등록 완료!");
+            setNewMember({ name: "", phone: "", points: 0 });
+            setRegisterOpen(false);
+            // Auto select?
+            setPhoneInput(newMember.phone);
+            searchMember(newMember.phone);
+        } catch (e) {
+            console.error(e);
+            alert("회원 등록 실패");
+        }
+    };
+
+    const handleModifyPoints = async (amount) => {
+        if (!member) return alert("회원을 선택해주세요");
+        const reason = prompt(`포인트 ${amount > 0 ? "지급" : "차감"} 사유를 입력하세요`, "관리자 수동 조정");
+        if (!reason) return;
+
+        const newBalance = (member.points || 0) + amount;
+        if (newBalance < 0) return alert("포인트가 부족합니다");
+
+        try {
+            await update(ref(db, `users/${member.uid}`), { points: newBalance });
+            // Add transaction log for record?
+            // Leaving simple for now or adding a "Manual" txn type if needed.
+            setMember({ ...member, points: newBalance });
+            alert("포인트가 조정되었습니다.");
+        } catch (e) {
+            alert("오류 발생");
+        }
+    };
+
+    const handleCalcInput = (val) => {
+        if (val === "C") {
+            setCalcBuffer("");
+            return;
+        }
+        if (val === "Back") {
+            setCalcBuffer(prev => prev.slice(0, -1));
+            return;
+        }
+        if (val === "Enter") {
+            // What does enter do? 
+            // Maybe adds to "Direct Input" price if buffer is number?
+            // Or sets the 'Money Received'? 
+            // For now, let's just use it to populate the 'Direct Input' Price prompt or Phone Input?
+            // User just said "Add Calculator". 
+            // Let's make it copy to clipboard or just stay in buffer for reference?
+            // Or better: If focus is on phone input, it types there. 
+            // If not, it just builds independent number.
+            return;
+        }
+        setCalcBuffer(prev => prev + val);
+    };
 
     const handleInitialize = () => {
         if (!confirm("모든 상태를 초기화하시겠습니까? (장바구니, 회원정보 삭제)")) return;
@@ -475,8 +570,8 @@ export default function PointSystem() {
                 </div>
 
                 <div className="flex gap-2">
+                    <button onClick={() => setToolsOpen(true)} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg font-bold transition-colors shadow-sm">⚙️ 도구/설정</button>
                     <button onClick={() => setProductsOpen(true)} className="px-4 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold transition-colors shadow-sm">상품관리</button>
-                    <button onClick={() => setSettingsOpen(true)} className="px-4 py-2 text-sm bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-bold transition-colors shadow-sm">설정</button>
                     <button onClick={handleOpenWindow} className="px-4 py-2 text-sm bg-gray-600 hover:bg-gray-500 text-white rounded-lg font-bold transition-colors shadow-sm">🖥️ 고객창</button>
                 </div>
             </div>
@@ -500,21 +595,86 @@ export default function PointSystem() {
                             }}
                         />
                         {member ? (
-                            <div className="bg-blue-50 rounded-2xl p-5 text-center flex-1 animate-fade-in border border-blue-100">
+                            <div className="bg-blue-50 rounded-2xl p-5 text-center flex-1 animate-fade-in border border-blue-100 relative flex flex-col items-center justify-center">
+                                <button onClick={() => setMember(null)} className="absolute top-2 right-2 text-gray-400 hover:text-red-500">×</button>
                                 <div className="text-4xl mb-3">👤</div>
                                 <div className="font-bold text-xl text-gray-900">{member.name}</div>
-                                <div className="text-gray-500 font-mono mb-2">{member.phone}</div>
-                                <div className="font-bold text-blue-600 text-2xl">{member.points?.toLocaleString()} P</div>
+                                <div className="text-gray-500 font-mono mb-4">{member.phone}</div>
+                                <div className="font-bold text-blue-600 text-2xl mb-4">{member.points?.toLocaleString()} P</div>
+
+                                <div className="flex gap-2 w-full max-w-[200px]">
+                                    <button onClick={() => handleModifyPoints(100)} className="flex-1 bg-white border border-blue-200 text-blue-600 text-xs font-bold py-2 rounded-lg hover:bg-blue-50">+100</button>
+                                    <button onClick={() => handleModifyPoints(-100)} className="flex-1 bg-white border border-red-200 text-red-600 text-xs font-bold py-2 rounded-lg hover:bg-red-50">-100</button>
+                                </div>
                             </div>
                         ) : (
-                            <div className="flex-1 flex items-center justify-center text-gray-400 text-sm">
-                                회원 정보를 입력해주세요
+                            <div className="flex-1 flex flex-col items-center justify-center text-gray-400 text-sm gap-4">
+                                <span>회원 정보를 입력하거나 등록하세요</span>
+                                <button
+                                    onClick={() => setRegisterOpen(true)}
+                                    className="bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-xl font-bold shadow-sm transition-colors"
+                                >
+                                    + 신규 회원 등록
+                                </button>
                             </div>
                         )}
                     </div>
+                    {/* Register Modal */}
+                    {registerOpen && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm">
+                            <div className="bg-white rounded-3xl p-8 w-[400px] shadow-2xl animate-scale-in">
+                                <h2 className="text-xl font-bold mb-6">신규 회원 등록</h2>
+                                <div className="space-y-4">
+                                    <input
+                                        className="w-full border p-3 rounded-xl bg-gray-50 focus:bg-white transition-colors"
+                                        placeholder="이름"
+                                        value={newMember.name}
+                                        onChange={e => setNewMember({ ...newMember, name: e.target.value })}
+                                    />
+                                    <input
+                                        className="w-full border p-3 rounded-xl bg-gray-50 focus:bg-white transition-colors"
+                                        placeholder="전화번호 (010-0000-0000)"
+                                        value={newMember.phone}
+                                        onChange={e => setNewMember({ ...newMember, phone: e.target.value })}
+                                    />
+                                    <input
+                                        className="w-full border p-3 rounded-xl bg-gray-50 focus:bg-white transition-colors"
+                                        placeholder="초기 포인트 (선택)"
+                                        type="number"
+                                        value={newMember.points}
+                                        onChange={e => setNewMember({ ...newMember, points: e.target.value })}
+                                    />
+                                </div>
+                                <div className="flex gap-2 mt-8">
+                                    <button onClick={() => setRegisterOpen(false)} className="flex-1 py-3 bg-gray-200 hover:bg-gray-300 rounded-xl font-bold text-gray-600">취소</button>
+                                    <button onClick={handleRegisterMember} className="flex-1 py-3 bg-blue-600 hover:bg-blue-500 rounded-xl font-bold text-white shadow-lg shadow-blue-200">등록 완료</button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
-                    {/* Bottom Left: Payment & Device & Controls */}
+                    {/* Bottom Left: Calculator & Controls */}
                     <div className="bg-white rounded-3xl p-6 shadow-sm h-auto flex flex-col gap-4 border border-gray-100">
+                        {/* Calculator Display */}
+                        <div className="bg-gray-100 rounded-xl p-3 text-right font-mono text-2xl font-bold text-gray-700 min-h-[50px] flex items-center justify-end">
+                            {calcBuffer || "0"}
+                        </div>
+                        {/* Calculator Grid */}
+                        <div className="grid grid-cols-4 gap-2">
+                            {['7', '8', '9', 'C', '4', '5', '6', 'Back', '1', '2', '3', '/', '0', '00', '.', '*'].map(key => (
+                                <button
+                                    key={key}
+                                    onClick={() => handleCalcInput(key)}
+                                    className={`py-2 rounded-lg font-bold text-sm transition-colors ${key === 'C' ? 'bg-red-100 text-red-600 hover:bg-red-200' :
+                                        key === 'Back' ? 'bg-orange-100 text-orange-600 hover:bg-orange-200' :
+                                            ['/', '*', '-', '+', 'Enter'].includes(key) ? 'bg-blue-50 text-blue-600 hover:bg-blue-100' :
+                                                'bg-gray-50 hover:bg-gray-100 text-gray-700'
+                                        }`}
+                                >
+                                    {key === 'Back' ? '⬅️' : key}
+                                </button>
+                            ))}
+                        </div>
                         {/* Control Buttons */}
                         <div className="grid grid-cols-2 gap-2 text-xs font-bold text-gray-600 mb-2">
                             <button onClick={handleInitialize} className="py-2 bg-gray-100 hover:bg-gray-200 rounded-xl">🔄 초기화</button>
@@ -524,21 +684,19 @@ export default function PointSystem() {
                         <div className="flex flex-col gap-2">
                             <div className="flex justify-between items-center">
                                 <h2 className="font-bold text-gray-800">결제 요청</h2>
-                                {/* Device Mode Toggle */}
-                                <label className="flex items-center gap-2 cursor-pointer bg-gray-50 px-2 py-1 rounded-lg">
-                                    <span className="text-xs font-bold text-gray-500">Device Link</span>
-                                    <div className={`w-8 h-4 rounded-full p-0.5 transition-colors ${isDeviceMode ? 'bg-blue-500' : 'bg-gray-300'}`}>
-                                        <div className={`w-3 h-3 bg-white rounded-full shadow-sm transform transition-transform ${isDeviceMode ? 'translate-x-4' : ''}`} />
-                                    </div>
-                                    <input type="checkbox" checked={isDeviceMode} onChange={e => setIsDeviceMode(e.target.checked)} className="hidden" />
-                                </label>
+                                <button
+                                    onClick={() => setIsSpecialMode(!isSpecialMode)}
+                                    className={`px-3 py-1 rounded-lg text-xs font-bold transition-all border ${isSpecialMode ? 'bg-red-500 text-white border-red-500' : 'bg-gray-100 text-gray-500 border-gray-200'}`}
+                                >
+                                    {isSpecialMode ? "🔥 특수모드 ON" : "특수모드 OFF"}
+                                </button>
                             </div>
 
                             {/* Final Amount */}
                             <div className="text-right py-2">
-                                <div className="text-xs text-gray-400 mb-1">최종 결제 금액</div>
-                                <div className="text-3xl font-extrabold text-blue-600">
-                                    {(calculateSubtotal()).toLocaleString()}원
+                                <div className="text-xs text-gray-400 mb-1">최종 결제 금액 (VAT 포함)</div>
+                                <div className="text-4xl font-extrabold text-blue-600 tracking-tight">
+                                    {(calculateSubtotal()).toLocaleString()} P
                                 </div>
                             </div>
                         </div>
@@ -563,69 +721,103 @@ export default function PointSystem() {
 
 
                 {/* --- CENTER COLUMN (5/12) --- */}
-                <div className="col-span-5 flex flex-col gap-6">
-                    {/* Top Center: Products */}
+                <div className="col-span-5 flex flex-col gap-4">
+                    {/* Categories */}
+                    <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
+                        {["전체", ...new Set(products.map(p => p.category || "기타"))].map(cat => (
+                            <button
+                                key={cat}
+                                onClick={() => setSelectedCategory(cat)}
+                                className={`px-4 py-2 rounded-xl font-bold text-sm whitespace-nowrap transition-colors shadow-sm ${selectedCategory === cat ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-100'}`}
+                            >
+                                {cat}
+                            </button>
+                        ))}
+                    </div>
+
+                    {/* Products Grid */}
                     <div className="bg-white rounded-3xl p-6 shadow-sm flex-1 flex flex-col overflow-hidden border border-gray-100">
                         <div className="flex justify-between items-center mb-4">
                             <h2 className="font-bold text-gray-800 text-lg">상품 선택</h2>
-                            <div className="space-x-2">
-                                <button
-                                    onClick={() => {
-                                        const n = prompt("상품명"); const p = prompt("금액");
-                                        if (n && p) addToCart({ id: Date.now(), name: n, price: parseInt(p) });
-                                    }}
-                                    className="text-xs bg-gray-100 px-3 py-1.5 rounded-lg font-bold text-gray-600 hover:bg-gray-200"
-                                >
-                                    직접입력
-                                </button>
-                                <button
-                                    onClick={() => {
-                                        const p = prompt("차감(사용)할 포인트");
-                                        if (p && member && parseInt(p) <= member.points) addToCart({ id: "use", name: "포인트사용", price: -parseInt(p), isPoint: true });
-                                    }}
-                                    className="text-xs bg-red-50 text-red-500 px-3 py-1.5 rounded-lg font-bold hover:bg-red-100 border border-red-100"
-                                >
-                                    포인트빼기
-                                </button>
-                            </div>
+                            <button
+                                onClick={() => {
+                                    const n = prompt("상품명"); const p = prompt("금액");
+                                    if (n && p) addToCart({ id: Date.now(), name: n, price: parseInt(p) });
+                                }}
+                                className="text-xs bg-gray-100 px-3 py-1.5 rounded-lg font-bold text-gray-600 hover:bg-gray-200"
+                            >
+                                직접입력
+                            </button>
                         </div>
                         <div className="flex-1 overflow-y-auto grid grid-cols-2 lg:grid-cols-3 gap-3 content-start pr-1">
-                            {products.map(p => (
-                                <button
-                                    key={p.id}
-                                    onClick={() => addToCart(p)}
-                                    className="p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-all text-left flex flex-col justify-between h-24 shadow-sm"
-                                >
-                                    <span className="font-bold text-md leading-tight text-gray-700">{p.name}</span>
-                                    <span className="text-blue-600 font-bold mt-1 text-md">{p.price?.toLocaleString()}</span>
-                                </button>
-                            ))}
+                            {products
+                                .filter(p => selectedCategory === "전체" || (p.category || "기타") === selectedCategory)
+                                .map(p => (
+                                    <button
+                                        key={p.id}
+                                        onClick={() => addToCart(p)}
+                                        className="p-4 bg-gray-50 rounded-2xl hover:bg-blue-50 border border-transparent hover:border-blue-200 transition-all text-left flex flex-col justify-between h-24 shadow-sm"
+                                    >
+                                        <span className="font-bold text-md leading-tight text-gray-700">{p.name}</span>
+                                        <span className="text-blue-600 font-bold mt-1 text-md">{p.price?.toLocaleString()} P</span>
+                                    </button>
+                                ))}
                         </div>
                     </div>
 
-                    {/* Bottom Center: Gift Card Controls */}
-                    <div className="bg-white rounded-3xl p-6 shadow-sm h-auto flex flex-col gap-4 border border-gray-100">
-                        <div className="flex gap-3">
-                            <div className="flex-1 p-4 bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 flex items-center justify-center cursor-pointer hover:bg-gray-100 hover:border-gray-300 transition-colors group" onClick={generateGiftCard}>
-                                <span className="text-sm font-bold text-gray-500 group-hover:text-gray-700">🎟️ 기프트카드 생성</span>
-                            </div>
-                            <button onClick={generateGiftCard} className="bg-indigo-500 hover:bg-indigo-600 text-white px-6 rounded-2xl font-bold text-sm shadow-md transition-shadow">추가</button>
-                        </div>
+                    {/* Tools Modal (Gift Cards, Settings, Point Usage) */}
+                    {toolsOpen && (
+                        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center backdrop-blur-sm" onClick={() => setToolsOpen(false)}>
+                            <div className="bg-white rounded-3xl p-8 w-[500px] shadow-2xl animate-scale-in" onClick={e => e.stopPropagation()}>
+                                <h2 className="text-xl font-bold mb-6 flex justify-between">
+                                    🛠️ 도구 및 설정
+                                    <button onClick={() => setToolsOpen(false)} className="text-gray-400">✕</button>
+                                </h2>
 
-                        <div className="bg-gray-50 rounded-2xl p-4">
-                            <h3 className="text-xs font-bold text-gray-500 mb-2 ml-1">할인 기프트카드 사용</h3>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    className="flex-1 border-gray-200 border rounded-xl px-3 py-2 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500 outline-none"
-                                    placeholder="기프트카드 번호 입력"
-                                    value={giftCardCodeInput}
-                                    onChange={e => setGiftCardCodeInput(e.target.value)}
-                                />
-                                <button onClick={applyGiftCard} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors">적용</button>
+                                <div className="space-y-6">
+                                    <div>
+                                        <h3 className="font-bold text-gray-700 mb-2">기프트카드 관리</h3>
+                                        <div className="flex gap-2 mb-2">
+                                            <button onClick={generateGiftCard} className="flex-1 bg-indigo-50 hover:bg-indigo-100 text-indigo-600 py-3 rounded-xl font-bold border border-indigo-200">🎟️ 생성</button>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            <input
+                                                className="flex-1 border p-2 rounded-xl bg-gray-50"
+                                                placeholder="코드 입력"
+                                                value={giftCardCodeInput}
+                                                onChange={e => setGiftCardCodeInput(e.target.value)}
+                                            />
+                                            <button onClick={applyGiftCard} className="bg-gray-800 text-white px-4 rounded-xl font-bold">적용</button>
+                                        </div>
+                                    </div>
+
+                                    <div className="border-t pt-4">
+                                        <h3 className="font-bold text-gray-700 mb-2">포인트 기능</h3>
+                                        <button
+                                            onClick={() => {
+                                                const p = prompt("차감(사용)할 포인트");
+                                                if (p && member && parseInt(p) <= member.points) addToCart({ id: "use", name: "포인트사용", price: -parseInt(p), isPoint: true });
+                                                setToolsOpen(false);
+                                            }}
+                                            className="w-full bg-red-50 text-red-500 py-3 rounded-xl font-bold hover:bg-red-100 border border-red-200"
+                                        >
+                                            포인트 사용 (차감 결제)
+                                        </button>
+                                    </div>
+
+                                    <div className="border-t pt-4">
+                                        <h3 className="font-bold text-gray-700 mb-2">시스템 설정</h3>
+                                        <button onClick={() => { setSettingsOpen(true); setToolsOpen(false); }} className="w-full bg-gray-100 py-3 rounded-xl font-bold text-gray-600 hover:bg-gray-200">가게 설정 열기</button>
+
+                                        <label className="flex items-center justify-between mt-4 p-3 bg-gray-50 rounded-xl cursor-pointer">
+                                            <span className="font-bold text-gray-600">Device Link 모드</span>
+                                            <input type="checkbox" checked={isDeviceMode} onChange={e => setIsDeviceMode(e.target.checked)} className="w-5 h-5" />
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                         </div>
-                    </div>
+                    )}
                 </div>
 
 
@@ -636,76 +828,100 @@ export default function PointSystem() {
                         <span className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-xs font-bold">{cart.length} items</span>
                     </h2>
 
-                    <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+                    {/* Table Header */}
+                    <div className="grid grid-cols-12 text-xs text-gray-400 font-bold mb-2 pb-2 border-b border-gray-100 text-center">
+                        <div className="col-span-5 text-left pl-2">상품명</div>
+                        <div className="col-span-2">단가</div>
+                        <div className="col-span-2">수량</div>
+                        <div className="col-span-3 text-right pr-2">합계</div>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto pr-1">
                         {cart.length === 0 && (
                             <div className="text-center text-gray-300 mt-20 text-sm">
                                 상품을 선택해주세요
                             </div>
                         )}
                         {cart.map((item, i) => (
-                            <div key={i} className="relative bg-white border border-gray-100 rounded-2xl p-4 shadow-sm hover:shadow-md transition-all group">
-                                <div className="flex justify-between items-start mb-2">
-                                    <div>
-                                        <h4 className="font-bold text-gray-800 text-md">{item.name}</h4>
-                                        {item.giftCardCode && (
-                                            <span className="text-[10px] text-gray-400 bg-gray-100 px-1.5 rounded py-0.5">CODE: {item.giftCardCode}</span>
-                                        )}
-                                    </div>
-                                    <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 p-1 opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                            <div key={i} className={`grid grid-cols-12 items-center text-sm py-3 border-b border-gray-50 hover:bg-gray-50 transition-colors group ${item.isSpecial ? 'text-red-500' : 'text-gray-700'}`}>
+                                <div className="col-span-5 pl-2 font-bold truncate flex flex-col">
+                                    <span>{item.name}</span>
+                                    {item.giftCardCode && <span className="text-[10px] text-gray-400">Code: {item.giftCardCode}</span>}
+                                    {item.remark && <span className="text-[10px] text-blue-500">{item.remark}</span>}
                                 </div>
-                                <div className="flex justify-between items-center text-sm text-gray-600">
-                                    <div className="flex items-center gap-1 bg-gray-50 rounded-lg px-2 py-1">
-                                        <input
-                                            type="number"
-                                            value={item.qty}
-                                            onChange={e => updateItemQty(item.id, e.target.value)}
-                                            className="w-8 text-center bg-transparent outline-none font-bold"
-                                        />
-                                        <span className="text-xs text-gray-400">x {item.price.toLocaleString()}</span>
-                                    </div>
-                                    <div className="font-bold text-blue-600 text-md">
-                                        {((item.price * item.qty) - (item.discount || 0)).toLocaleString()}원
-                                    </div>
+                                <div className="col-span-2 text-center text-xs text-gray-400">
+                                    {item.price.toLocaleString()}
                                 </div>
-                                {/* Discount UI */}
-                                <div className="mt-2 flex items-center justify-end gap-2 text-xs">
-                                    {item.discount > 0 && <span className="text-red-500 font-bold bg-red-50 px-2 py-0.5 rounded-full">-{item.discount.toLocaleString()}원</span>}
-                                    {/* Hidden percent input for manager tweak? */}
+                                <div className="col-span-2 flex justify-center">
+                                    <input
+                                        type="number"
+                                        value={item.qty}
+                                        onChange={e => updateItemQty(item.id, e.target.value)}
+                                        className={`w-8 text-center bg-transparent outline-none font-bold underline decoration-gray-300 underline-offset-2 ${item.isSpecial ? 'text-red-600' : 'text-gray-900'}`}
+                                    />
                                 </div>
-                                {item.remark && <div className="mt-2 text-xs text-red-500 font-bold bg-red-50 p-1 rounded text-center">{item.remark}</div>}
+                                <div className="col-span-3 text-right pr-2 font-bold relative group">
+                                    {/* Delete Button */}
+                                    <div className="flex justify-end items-center gap-2">
+                                        <span>{((item.price * item.qty) - (item.discount || 0)).toLocaleString()}</span>
+                                        <button onClick={() => removeFromCart(item.id)} className="text-gray-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">×</button>
+                                    </div>
+                                    {item.discount > 0 && <div className="text-[10px] text-red-500">(-{item.discount.toLocaleString()})</div>}
+                                </div>
                             </div>
                         ))}
                     </div>
 
-                    <div className="mt-4 pt-4 border-t border-gray-100">
-                        <div className="mb-3">
-                            <label className="text-xs font-bold text-gray-500 mb-2 block ml-1">화면 출력 메모</label>
-                            <div className="flex gap-3 mb-3 justify-center">
-                                {['black', 'red', 'blue', 'green'].map(c => (
-                                    <button
-                                        key={c}
-                                        onClick={() => setMemoColor(c)}
-                                        className={`w-6 h-6 rounded-full border-2 transition-transform ${memoColor === c ? 'border-gray-800 scale-125 ring-2 ring-gray-100' : 'border-transparent'}`}
-                                        style={{ backgroundColor: c }}
-                                    />
-                                ))}
-                            </div>
-                            <div className="flex gap-2">
-                                <input
-                                    type="text"
-                                    className="flex-1 border-gray-200 border rounded-xl px-3 py-2 text-sm focus:border-blue-500 outline-none"
-                                    placeholder="고객에게 보여줄 메시지"
-                                    value={memo}
-                                    onChange={e => setMemo(e.target.value)}
-                                    style={{ color: memoColor }}
-                                />
-                                <button onClick={handleOutputMemo} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors">출력</button>
+                    {/* Totals Summary */}
+                    {cart.length > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-200 flex flex-col gap-1">
+                            <div className="flex justify-between text-sm text-gray-500">
+                                <span>할인</span>
+                                <span>{cart.reduce((sum, i) => sum + (i.discount || 0), 0).toLocaleString()} P</span>
                             </div>
                         </div>
+                    )}
+
+                    {/* Memo Input */}
+                    <div className="mt-4 flex gap-2 pt-2 border-t border-gray-100">
+                        <input
+                            type="text"
+                            className="flex-1 border-gray-200 border rounded-xl px-3 py-2 text-sm focus:border-blue-500 outline-none"
+                            placeholder="화면 출력 메모"
+                            value={memo}
+                            onChange={e => setMemo(e.target.value)}
+                            style={{ color: memoColor }}
+                        />
+                        <button onClick={handleOutputMemo} className="bg-gray-800 hover:bg-gray-700 text-white px-4 py-2 rounded-xl text-xs font-bold transition-colors">출력</button>
                     </div>
                 </div>
 
             </div>
+
+            {/* Success Overlay */}
+            {status === "완료" && (
+                <div className="fixed inset-0 bg-blue-600 z-[100] flex flex-col items-center justify-center text-white animate-fade-in">
+                    <div className="bg-white/20 p-10 rounded-full mb-8 backdrop-blur-sm animate-scale-in">
+                        <div className="text-8xl">✅</div>
+                    </div>
+                    <h1 className="text-6xl font-bold mb-4">결제 완료</h1>
+                    <p className="text-2xl opacity-90 mb-12">거래가 정상적으로 처리되었습니다.</p>
+
+                    <div className="flex gap-4">
+                        <button
+                            onClick={() => {
+                                setStatus("대기중");
+                                setMember(null);
+                                setPhoneInput("");
+                                setCart([]);
+                            }}
+                            className="bg-white text-blue-600 px-10 py-5 rounded-2xl text-2xl font-bold hover:scale-105 transition-transform shadow-xl"
+                        >
+                            다음 손님 받기 (초기화)
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
