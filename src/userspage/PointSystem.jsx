@@ -577,7 +577,7 @@ export default function PointSystem() {
             </div>
 
             {/* MAIN GRID LAYOUT (3 Columns x 2 Rows effectively) - prettified */}
-            <div className="flex-1 grid grid-cols-12 gap-6 p-6 bg-[#F2F4F6]">
+            <div className="flex-1 grid grid-cols-12 gap-6 p-6 bg-[#F2F4F6] overflow-y-auto">
 
                 {/* --- LEFT COLUMN (3/12) --- */}
                 <div className="col-span-3 flex flex-col gap-6">
